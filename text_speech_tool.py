@@ -2,10 +2,26 @@ import argparse
 import pyttsx3
 from gtts import gTTS
 
-def save_wav(text, filename):
+def list_voices(engine):
+    """List available voices for pyttsx3."""
+    voices = engine.getProperty('voices')
+    print("\n🗣️ Available voices:")
+    for i, voice in enumerate(voices):
+        print(f"{i}: {voice.name} ({voice.id})")
+    return voices
+
+def save_wav(text, filename, voice_id=None, rate=150):
     """Generate WAV file using pyttsx3 (offline)"""
     engine = pyttsx3.init()
-    engine.setProperty('rate', 150)
+    engine.setProperty('rate', rate)
+
+    # Set custom voice if provided
+    if voice_id is not None:
+        voices = engine.getProperty('voices')
+        try:
+            engine.setProperty('voice', voices[voice_id].id)
+        except IndexError:
+            print("⚠️ Invalid voice index, using default voice.")
     engine.save_to_file(text, filename)
     engine.runAndWait()
     print(f"✅ Saved WAV file: {filename}")
@@ -17,7 +33,7 @@ def save_mp3(text, filename, lang='en'):
     print(f"✅ Saved MP3 file: {filename}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Simple Text-to-Speech Tool")
+    parser = argparse.ArgumentParser(description="Simple Text-to-Speech Tool with Voice Selection")
     parser.add_argument("--text", "-t", help="Text to convert to speech")
     parser.add_argument("--wav", help="Output WAV file (offline, uses pyttsx3)")
     parser.add_argument("--mp3", help="Output MP3 file (online, uses gTTS)")
@@ -39,10 +55,17 @@ def main():
             print("⚠️ Invalid choice. Please restart and type 'wav' or 'mp3'.")
             return
 
-    # 🔹 Generate files
+    # 🔹 Handle WAV with voice choice
     if args.wav:
-        save_wav(args.text, args.wav)
+        engine = pyttsx3.init()
+        voices = list_voices(engine)
+        try:
+            voice_choice = int(input("\n🎙️ Choose a voice number from the list above: "))
+        except ValueError:
+            voice_choice = None
+        save_wav(args.text, args.wav, voice_id=voice_choice)
 
+    # 🔹 Handle MP3 (no custom voice support in gTTS)
     if args.mp3:
         save_mp3(args.text, args.mp3)
 
