@@ -1,97 +1,203 @@
 import argparse
 import pyttsx3
 from gtts import gTTS
+import os
+from PyPDF2 import PdfReader
+from docx import Document
+from tkinter import Tk, filedialog
+import random
 
-def list_voices(engine):
-    """List available voices for pyttsx3."""
+# -----------------------------
+# 🗣️ Voice Management
+# -----------------------------
+def get_voice_by_gender(engine, gender="female"):
+    """Return the first voice that matches the gender (male/female)."""
     voices = engine.getProperty('voices')
-    print("\n🗣️ Available voices:")
-    for i, voice in enumerate(voices):
-        print(f"{i}: {voice.name} ({voice.id})")
-    print(f"{len(voices)}: 🤖 Robot Voice (simulated)")
-    print(f"{len(voices) + 1}: 🕶️ Deep Voice (simulated)")
-    return voices
+    for voice in voices:
+        if gender.lower() in voice.name.lower() or gender.lower() in getattr(voice, 'gender', '').lower():
+            return voice.id
+    return voices[0].id  # fallback
 
-def save_wav(text, filename, voice_id=None, rate=150):
-    """Generate WAV file using pyttsx3 (offline)"""
-    engine = pyttsx3.init()
-    engine.setProperty('rate', rate)
-    voices = engine.getProperty('voices')
+def list_voice_options():
+    print("\n🗣️ Voice options:")
+    print("1: Female Voice")
+    print("2: Male Voice")
+    print("3: 🤖 Robot Voice")
+    print("4: 💻 Hacker Voice")
 
-    # Handle robot and deep voice
-    if voice_id is not None:
-        if voice_id == len(voices):  # Robot voice
-            print("🤖 Applying robot effect...")
-            engine.setProperty('rate', 120)
-            engine.setProperty('volume', 1.0)
-            engine.setProperty('voice', voices[0].id)
-            text = ' '.join([word + "..." + word for word in text.split()])
+# -----------------------------
+# 💾 Audio Generation
+# -----------------------------
+def save_wav(text, filename, voice_option=1, rate=150, volume=1.0):
+    """Generate WAV file with selected voice option."""
+    try:
+        engine = pyttsx3.init()
+    except Exception as e:
+        print(f"❌ pyttsx3 init failed: {e}")
+        return
 
-        elif voice_id == len(voices) + 1:  # Deep voice
-            print("🕶️ Applying deep voice effect...")
-            engine.setProperty('rate', 110)
-            engine.setProperty('voice', voices[0].id)
-            # Trick: Add a deep-tone simulation (stretch text slightly)
-            text = ' '.join([word + '...' for word in text.split()])
+    engine.setProperty("rate", rate)
+    engine.setProperty("volume", volume)
 
-        else:  # Normal voice
-            try:
-                engine.setProperty('voice', voices[voice_id].id)
-            except Exception:
-                print("⚠️ Invalid voice index, using default.")
+    # Choose voice
+    if voice_option == 1:  # Female
+        engine.setProperty("voice", get_voice_by_gender(engine, "female"))
+    elif voice_option == 2:  # Male
+        engine.setProperty("voice", get_voice_by_gender(engine, "male"))
+    elif voice_option == 3:  # Robot
+        engine.setProperty("voice", engine.getProperty('voices')[0].id)
+        text = " ".join([word + "..." + word for word in text.split()])
+        engine.setProperty("rate", 120)
+    elif voice_option == 4:  # Hacker
+        engine.setProperty("voice", engine.getProperty('voices')[0].id)
+        # Randomly insert pauses and leetspeak
+        text = hacker_transform(text)
+        engine.setProperty("rate", 140)
+
     engine.save_to_file(text, filename)
     engine.runAndWait()
     print(f"✅ Saved WAV file: {filename}")
 
-def save_mp3(text, filename, lang='en'):
-    """Generate MP3 file using gTTS (online, requires internet)"""
-    tts = gTTS(text=text, lang=lang)
-    tts.save(filename)
-    print(f"✅ Saved MP3 file: {filename}")
+def hacker_transform(text):
+    """Transform text into 'hacker style' by adding leetspeak and pauses."""
+    leet_dict = {'a':'4', 'e':'3', 'i':'1', 'o':'0', 's':'5', 't':'7'}
+    words = text.split()
+    transformed = []
+    for word in words:
+        w = ''.join(leet_dict.get(c.lower(), c) for c in word)
+        w = '.'.join(list(w))  # insert dots between letters for effect
+        transformed.append(w)
+    return ' '.join(transformed)
 
+def save_mp3(text, filename, lang="en"):
+    """Generate MP3 file using gTTS."""
+    try:
+        tts = gTTS(text=text, lang=lang)
+        tts.save(filename)
+        print(f"✅ Saved MP3 file: {filename}")
+    except Exception as e:
+        print(f"❌ Error generating MP3: {e}")
+
+# -----------------------------
+# 📘 PDF Text Extraction
+# -----------------------------
+def extract_text_from_pdf(pdf_path):
+    try:
+        reader = PdfReader(pdf_path)
+        text = ""
+        for i, page in enumerate(reader.pages, start=1):
+            page_text = page.extract_text() or ""
+            text += page_text + "\n\n"
+            print(f"📄 Extracted page {i}/{len(reader.pages)}")
+        return text.strip()
+    except Exception as e:
+        print(f"❌ Error reading PDF: {e}")
+        return ""
+
+# -----------------------------
+# ✍️ Save Text
+# -----------------------------
+def save_text_to_file(text, filename):
+    if not text.strip():
+        print("⚠️ No text to save.")
+        return
+    ext = os.path.splitext(filename)[1].lower()
+    try:
+        if ext == ".txt":
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(text)
+            print(f"✅ Saved text to TXT: {filename}")
+        elif ext == ".docx":
+            doc = Document()
+            for paragraph in text.split("\n\n"):
+                doc.add_paragraph(paragraph)
+            doc.save(filename)
+            print(f"✅ Saved text to DOCX: {filename}")
+        else:
+            print("⚠️ Unsupported format. Use .txt or .docx.")
+    except Exception as e:
+        print(f"❌ Error saving text: {e}")
+
+# -----------------------------
+# 🚀 Main Logic
+# -----------------------------
 def main():
-    parser = argparse.ArgumentParser(description="Text-to-Speech Tool with Voice Options (Robot, Deep, etc.)")
-    parser.add_argument("--text", "-t", help="Text to convert to speech")
-    parser.add_argument("--wav", help="Output WAV file (offline, uses pyttsx3)")
-    parser.add_argument("--mp3", help="Output MP3 file (online, uses gTTS)")
+    parser = argparse.ArgumentParser(description="📖 Text-to-Speech Tool with voice options")
+    parser.add_argument("--pdf", help="Path to PDF file")
+    parser.add_argument("--text", "-t", help="Text to convert")
     args = parser.parse_args()
 
-    if not args.text:
-        args.text = input("📝 Enter the text you want to convert to speech:\n> ")
+    base_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+    text_content = ""
+    base_name = "output"
 
-    if not args.wav and not args.mp3:
-        choice = input("🎧 Do you want WAV or MP3 output? (type 'wav' or 'mp3'): ").strip().lower()
-        filename = input("💾 Enter output filename (without extension): ").strip()
-        if choice == "wav":
-            args.wav = f"{filename}.wav"
-        elif choice == "mp3":
-            args.mp3 = f"{filename}.mp3"
-        else:
-            print("⚠️ Invalid choice. Please restart.")
-            return
+    # Input
+    if not args.pdf and not args.text:
+        print("\n📂 Choose input:")
+        print("1: PDF file")
+        print("2: Typed/pasted text")
+        choice = input("👉 Enter 1 or 2: ").strip()
+        if choice == "1":
+            root = Tk(); root.withdraw()
+            pdf_path = filedialog.askopenfilename(title="Select PDF", filetypes=[("PDF Files","*.pdf")])
+            root.destroy()
+            if not pdf_path: print("❌ No PDF selected."); return
+            text_content = extract_text_from_pdf(pdf_path)
+            base_name = os.path.splitext(os.path.basename(pdf_path))[0]
+        elif choice == "2":
+            text_content = input("📝 Enter text:\n> ").strip()
+            base_name = "text_input"
+        else: print("⚠️ Invalid choice"); return
+    elif args.pdf:
+        if not os.path.exists(args.pdf): print("❌ PDF not found"); return
+        text_content = extract_text_from_pdf(args.pdf)
+        base_name = os.path.splitext(os.path.basename(args.pdf))[0]
+    else:
+        text_content = args.text.strip()
+        base_name = "text_input"
 
-    try:
-        speed_choice = input("⚙️ Choose speaking speed (slow / normal / fast): ").strip().lower()
-        if speed_choice == "slow":
-            rate = 120
-        elif speed_choice == "fast":
-            rate = 200
-        else:
-            rate = 150
-    except Exception:
-        rate = 150
+    if not text_content: print("⚠️ No text to convert"); return
 
-    if args.wav:
-        engine = pyttsx3.init()
-        voices = list_voices(engine)
-        try:
-            voice_choice = int(input("\n🎙️ Choose a voice number from the list above: "))
-        except ValueError:
-            voice_choice = None
-        save_wav(args.text, args.wav, voice_id=voice_choice, rate=rate)
+    # Output format
+    output_choice = input("\n🎧 Output format (wav/mp3): ").strip().lower()
+    if output_choice not in ["wav","mp3"]: output_choice="mp3"
 
-    if args.mp3:
-        save_mp3(args.text, args.mp3)
+    save_text_file = input("💾 Save text too? (y/n): ").strip().lower()=="y"
 
-if __name__ == "__main__":
+    # Speed
+    rate = 150
+    speed_choice = input("⚙️ Speaking speed (slow/normal/fast): ").strip().lower()
+    if speed_choice=="slow": rate=120
+    elif speed_choice=="fast": rate=200
+
+    # Voice selection
+    voice_option = 1
+    if output_choice=="wav":
+        list_voice_options()
+        while True:
+            choice = input("🎙️ Choose voice (1-4): ").strip()
+            try:
+                voice_option = int(choice)
+                if 1 <= voice_option <=4: break
+                else: print("⚠️ Invalid number")
+            except ValueError: print("⚠️ Enter a number")
+
+    # Generate
+    audio_path = os.path.join(base_dir, f"{base_name}.{output_choice}")
+    text_path = os.path.join(base_dir, f"{base_name}.txt")
+
+    print("\n🚀 Generating audio...")
+    if output_choice=="wav":
+        save_wav(text_content, audio_path, voice_option=voice_option, rate=rate)
+    else:
+        save_mp3(text_content, audio_path)
+
+    if save_text_file:
+        save_text_to_file(text_content, text_path)
+
+    print("\n✅ Done!")
+    print(f"📂 Audio: {audio_path}")
+    if save_text_file: print(f"📂 Text: {text_path}")
+
+if __name__=="__main__":
     main()
