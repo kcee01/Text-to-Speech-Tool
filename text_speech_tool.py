@@ -20,9 +20,8 @@ def list_system_voices(engine):
             lang = voice.languages[0] if voice.languages else 'Unknown'
             gender = getattr(voice, 'gender', 'Unknown')
             print(f"{i}: {voice.name} ({gender}, {lang})")
-    # Add simulated voices
     print(f"{len(voices)}: 🤖 Robot Voice (simulated)")
-    print(f"{len(voices)+1}: 💻 Hacker Voice (simulated)")
+    print(f"{len(voices) + 1}: 💻 Hacker Voice (simulated)")
     return voices
 
 def hacker_transform(text):
@@ -45,8 +44,20 @@ def save_wav(text, filename, voice_id=None, rate=150, volume=1.0):
     engine.setProperty('volume', volume)
     if voice_id:
         engine.setProperty('voice', voice_id)
-    engine.save_to_file(text, filename)
-    engine.runAndWait()
+
+    # Split text into chunks to avoid SAPI5 crash
+    chunk_size = 1000
+    for i in range(0, len(text), chunk_size):
+        engine.save_to_file(text[i:i+chunk_size], filename)
+
+    # ✅ Prevent freeze from runAndWait()
+    try:
+        engine.startLoop(False)
+    except RuntimeError:
+        pass
+    finally:
+        engine.endLoop()
+
     print(f"✅ Saved WAV: {filename}")
 
 def save_mp3(text, filename, lang='en'):
@@ -57,9 +68,6 @@ def save_mp3(text, filename, lang='en'):
     except Exception as e:
         print(f"❌ gTTS error: {e}")
 
-# -----------------------------
-# 🔊 Voice Preview
-# -----------------------------
 def preview_voice(text, voice_id, rate=150):
     engine = pyttsx3.init()
     engine.setProperty('rate', rate)
@@ -118,37 +126,31 @@ def main():
     text_content = ""
     base_name = "output"
 
-    # -----------------------------
-    # Voice selection first
-    # -----------------------------
     engine = pyttsx3.init()
     voices = list_system_voices(engine)
 
     while True:
-        choice = input("Choose voice number (system voices + simulated): ").strip()
+        choice = input("Choose voice number (system + simulated): ").strip()
         try:
             voice_index = int(choice)
             if 0 <= voice_index <= len(voices) + 1:
                 break
-            else:
-                print("⚠️ Invalid number")
+            print("⚠️ Invalid number")
         except ValueError:
             print("⚠️ Enter a number")
 
-    # Map voice selection
+    # Voice mapping
     if voice_index < len(voices):
         selected_voice_id = voices[voice_index].id
         text_transform = lambda t: t
-    elif voice_index == len(voices):  # Robot
+    elif voice_index == len(voices):
         selected_voice_id = voices[0].id if voices else None
         text_transform = lambda t: " ".join([word + "..." + word for word in t.split()])
-    elif voice_index == len(voices) + 1:  # Hacker
+    else:
         selected_voice_id = voices[0].id if voices else None
         text_transform = hacker_transform
 
-    # -----------------------------
     # Input selection
-    # -----------------------------
     if not args.pdf and not args.text:
         choice = input("1: PDF file\n2: Typed text\n👉 Choose: ").strip()
         if choice == "1":
@@ -180,36 +182,17 @@ def main():
         print("⚠️ No text")
         return
 
-    # Apply text transform if needed (Robot/Hacker)
     text_content = text_transform(text_content)
 
-    # -----------------------------
-    # Voice preview
-    # -----------------------------
-    preview_choice = input("👂 Preview this voice? (y/n): ").strip().lower()
-    if preview_choice == 'y':
-        sample_text = ' '.join(text_content.split()[:30])
-        preview_voice(sample_text, selected_voice_id, rate=150)
+    if input("👂 Preview voice? (y/n): ").strip().lower() == 'y':
+        preview_voice(' '.join(text_content.split()[:30]), selected_voice_id, rate=150)
 
-    # -----------------------------
-    # Output format
-    # -----------------------------
     output_choice = input("🎧 Output format (wav/mp3): ").strip().lower()
-    if output_choice not in ['wav', 'mp3']:
-        output_choice = 'mp3'
+    if output_choice not in ['wav', 'mp3']: output_choice = 'mp3'
     save_text_file = input("💾 Save text? (y/n): ").strip().lower() == 'y'
 
-    # Speed
-    rate = 150
-    speed_choice = input("⚙️ Speed (slow/normal/fast): ").strip().lower()
-    if speed_choice == 'slow':
-        rate = 120
-    elif speed_choice == 'fast':
-        rate = 200
+    rate = {'slow':120, 'fast':200}.get(input("⚙️ Speed (slow/normal/fast): ").strip().lower(), 150)
 
-    # -----------------------------
-    # Generate files
-    # -----------------------------
     audio_path = os.path.join(base_dir, f"{base_name}.{output_choice}")
     text_path = os.path.join(base_dir, f"{base_name}.txt")
 
@@ -223,9 +206,8 @@ def main():
         save_text_to_file(text_content, text_path)
 
     print("\n✅ Done!")
-    print(f"📂 Audio: {audio_path}")
-    if save_text_file:
-        print(f"📂 Text: {text_path}")
+    print(f"📂 Audio saved: {audio_path}")
+    if save_text_file: print(f"📂 Text saved: {text_path}")
 
 if __name__ == "__main__":
     main()
